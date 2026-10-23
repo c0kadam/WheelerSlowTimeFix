@@ -24,4 +24,10 @@ Alternatively use environment variables `CommonLibSSEPath_NG`, `VCPKG_ROOT`, `SP
 
 Choose an absent external build directory. The wrapper unsets `CompiledPluginsPath`; an empty-but-defined CMake variable is unsafe because the retained CMake checks whether it is defined. The wrapper inspects the fresh cache and generated plugin project before compiling, and builds only the DLL target. Do not invoke a legacy configuration with a deployment variable set. No install target or game launch is used.
 
+## Release artifact privacy
+
+For v1.1.0-rc.1, the numeric SKSE/file version is 1.1.0.0 and the generated release label is 1.1.0-rc.1. The Release linker embeds only `WheelerSlowTimeFix.pdb`, not its local directory.
+
+Source-location strings can still contain source/dependency paths. Prepare public binaries from a neutral layout, for example `W:/source`, `W:/deps/CommonLibSSE` and `W:/build-release`, with the same pinned dependencies. The workspace can be exposed through a temporary Windows drive mapping. Verify source hashes before building, then inspect ASCII/UTF-16 strings and the PE debug record for personal directories, credentials and internal paths. Never attach a private PDB or an unchecked binary.
+
 PDBs and compiled binaries can embed absolute source/build paths. They are not included in this source staging repository. Review generated artifacts and applicable dependency notices separately before any future binary distribution. Byte-identical rebuilds and gameplay equivalence are not claimed.

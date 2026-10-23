@@ -1,6 +1,6 @@
 # External dependency attribution
 
-The plugin's project license remains undecided. The following licenses apply to their respective external dependencies; they do not select a license for this project. Dependency source trees and compiled libraries are not included in this source distribution.
+The plugin project is licensed under GPL-3.0-or-later; see [LICENSE](LICENSE). The following licenses continue to apply to their respective external dependencies and are not replaced by the project license. Dependency source trees and compiled libraries are not included in this source distribution.
 
 | Dependency | License / attribution | Upstream notice |
 |---|---|---|
