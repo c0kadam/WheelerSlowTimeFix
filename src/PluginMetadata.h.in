@@ -1,0 +1,11 @@
+#pragma once
+
+#include "PCH.h"
+
+namespace Plugin
+{
+	inline constexpr auto NAME = "@PROJECT_NAME@"sv;
+	inline constexpr auto AUTHOR = "@PLUGIN_AUTHOR@"sv;
+	inline constexpr auto VERSION_LABEL = "@PLUGIN_VERSION_LABEL@"sv;
+	inline constexpr REL::Version VERSION{ @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, @PLUGIN_VERSION_TWEAK@ };
+}
