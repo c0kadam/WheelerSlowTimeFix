@@ -2,7 +2,7 @@
 
 An SKSE plugin that addresses Slow Time conflicts between Wheeler and Skyrim Souls RE, including compatibility with selected SlowTimeEffect spells.
 
-**Compatibility:** Skyrim AE 1.6.1170. SE 1.5.97 is declared but untested. Skyrim 1.7.x is not supported yet.
+**Compatibility:** Plugin loading confirmed on Skyrim SE 1.5.97 and AE 1.6.1170. Full gameplay validation is pending. Skyrim 1.7.x is not supported yet.
 
 **Requirements:** SKSE, Address Library, Wheeler, and Skyrim Souls RE.
 

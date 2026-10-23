@@ -4,7 +4,6 @@
 /.vscode/
 /vcpkg_installed/
 /_deps/
-/captures/
 *.etl
 *.dll
 *.pdb
@@ -17,9 +16,7 @@
 *.suo
 CMakeCache.txt
 CMakeFiles/
-__pycache__/
 .env
 .env.*
 *.pem
 *.key
-/tests/

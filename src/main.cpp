@@ -24,6 +24,29 @@ namespace
 		spdlog::info("[SlowTimeFix] logging to {}", path->string());
 	}
 
+	std::string FormatVersion(const REL::Version& a_version)
+	{
+		auto text = a_version.string(".");
+		if (a_version.build() == 0) {
+			text.resize(text.rfind('.'));
+		}
+		return text;
+	}
+
+	void LogStartupVersions(const SKSE::LoadInterface* a_skse)
+	{
+		const auto runtime = a_skse->RuntimeVersion();
+		// SKSE uses the same 8/8/12/4-bit packed format as REL::Version.
+		const auto skseVersion = REL::Version::unpack(a_skse->SKSEVersion());
+		const auto family = runtime.major() == 1 && runtime.minor() == 5 ? "SE" :
+		                    runtime.major() == 1 && runtime.minor() == 6 ? "AE" : "Unknown";
+
+		SKSE::log::info("{} {}", Plugin::NAME, FormatVersion(Plugin::VERSION));
+		SKSE::log::info("Skyrim runtime: {}", FormatVersion(runtime));
+		SKSE::log::info("SKSE version: {}", FormatVersion(skseVersion));
+		SKSE::log::info("Runtime family: {}", family);
+	}
+
 	void MessageHandler(SKSE::MessagingInterface::Message* a_message)
 	{
 		switch (a_message ? a_message->type : 0) {
@@ -48,9 +71,30 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	return v;
 }();
 
+extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
+{
+	if (!a_skse || !a_info) {
+		return false;
+	}
+
+	a_info->infoVersion = SKSE::PluginInfo::kVersion;
+	a_info->name = Plugin::NAME.data();
+	a_info->version = Plugin::VERSION.pack();
+	if (a_skse->IsEditor()) {
+		return false;
+	}
+
+	const auto runtime = a_skse->RuntimeVersion().pack();
+	const auto& compatible = SKSEPlugin_Version.compatibleVersions;
+	return runtime != 0 && std::find(std::begin(compatible), std::end(compatible), runtime) != std::end(compatible);
+}
+
 extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
 	InitializeLog();
+	if (a_skse) {
+		LogStartupVersions(a_skse);
+	}
 	SKSE::Init(a_skse);
 
 	SlowTimeCompat::InstallHooks();
