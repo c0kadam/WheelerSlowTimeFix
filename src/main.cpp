@@ -39,7 +39,7 @@ namespace
 		// SKSE uses the same 8/8/12/4-bit packed format as REL::Version.
 		const auto skseVersion = REL::Version::unpack(a_skse->SKSEVersion());
 		const auto family = runtime.major() == 1 && runtime.minor() == 5 ? "SE" :
-		                    runtime.major() == 1 && runtime.minor() == 6 ? "AE" : "Unknown";
+		                    runtime.major() == 1 && runtime.minor() >= 6 ? "AE" : "Unknown";
 
 		SKSE::log::info("{} {}", Plugin::NAME, FormatVersion(Plugin::VERSION));
 		SKSE::log::info("Skyrim runtime: {}", FormatVersion(runtime));
@@ -65,13 +65,13 @@ extern "C" DLLEXPORT constinit auto SKSEPlugin_Version = []() {
 	v.PluginName(Plugin::NAME);
 	v.PluginVersion(Plugin::VERSION);
 	v.AuthorName(Plugin::AUTHOR);
-	v.UsesAddressLibrary(true);
-	v.HasNoStructUse(true);
-	v.CompatibleVersions({ SKSE::RUNTIME_SSE_LATEST_SE, SKSE::RUNTIME_SSE_LATEST_AE });
+	v.UsesAddressLibrary();
+	v.UsesNoStructs();
+	v.CompatibleVersions({ SKSE::RUNTIME_SSE_1_5_97, SKSE::RUNTIME_SSE_1_6_1170, SKSE::RUNTIME_SSE_1_7_104 });
 	return v;
 }();
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
+extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Query(const SKSE::QueryInterface* a_skse, SKSE::PluginInfo* a_info)
 {
 	if (!a_skse || !a_info) {
 		return false;
@@ -89,13 +89,14 @@ extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Query(const SKSE::QueryInterface* a
 	return runtime != 0 && std::find(std::begin(compatible), std::end(compatible), runtime) != std::end(compatible);
 }
 
-extern "C" DLLEXPORT bool SKSEAPI SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
+extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Load(const SKSE::LoadInterface* a_skse)
 {
 	InitializeLog();
 	if (a_skse) {
 		LogStartupVersions(a_skse);
 	}
-	SKSE::Init(a_skse);
+	// Keep InitializeLog's sink; CommonLib's default logger truncates the same file.
+	SKSE::Init(a_skse, SKSE::InitInfo{ .log = false });
 
 	SlowTimeCompat::InstallHooks();
 	TimeTargetWatch::SetMainThreadID(::GetCurrentThreadId());

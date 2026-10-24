@@ -2,17 +2,17 @@ cmake_minimum_required(VERSION 3.22)
 
 project(
 	WheelerSlowTimeFix
-	VERSION 1.1.0
+	VERSION 1.2.0
 	LANGUAGES CXX
 )
 
 option(WSTF_VERBOSE_LOGGING "Enable original detailed runtime logging" OFF)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PLUGIN_AUTHOR "c0kadam")
-set(PLUGIN_VERSION_LABEL "1.1.0-rc.1")
+set(PLUGIN_VERSION_LABEL "1.2.0-rc.1")
 set(PLUGIN_VERSION_TWEAK 0)
 set(PLUGIN_PRODUCT_NAME "Wheeler Slow Time Fix")
 set(PLUGIN_FILE_DESCRIPTION "Wheeler / Skyrim Souls / For Honor slow-time compatibility fix")
@@ -52,7 +52,7 @@ add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES} "${PROJECT_BINARY_DIR}/versio
 target_compile_definitions(${PROJECT_NAME} PRIVATE
 	WSTF_VERBOSE_LOGGING=$<BOOL:${WSTF_VERBOSE_LOGGING}>)
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 if(MSVC)
 	target_compile_options(
