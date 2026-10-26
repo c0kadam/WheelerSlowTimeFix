@@ -26,9 +26,11 @@ Alternatively use environment variables `CommonLibSSEPath_NG`, `VCPKG_ROOT`, `SP
 
 Choose an absent external build directory. The wrapper configures x64 Release with verbose logging disabled, inspects the fresh cache and generated plugin project, and builds only the DLL target. Build outputs remain in the external build directory; neither the DLL nor the PDB is automatically deployed. No install target or game launch is used.
 
+For a local v1.3.0 test mod, copy the verified DLL to `SKSE/Plugins/WheelerSlowTimeFix.dll` and place the example `WheelerSlowTimeFix.ini` from the [README](README.md) beside it. The INI can enable Glasswork Favorites and p-radials without changing the built-in Wheeler and Skyrim Souls handling. Keep PDBs and build outputs outside the test mod.
+
 ## Release artifact privacy
 
-For v1.2.0, the numeric SKSE/file version is 1.2.0.0 and the generated release label is 1.2.0. The Release linker embeds only `WheelerSlowTimeFix.pdb`, not its local directory.
+For v1.3.0, the numeric SKSE/file version is 1.3.0.0 and the generated release label is 1.3.0. The Release linker embeds only `WheelerSlowTimeFix.pdb`, not its local directory.
 
 Source-location strings can still contain source/dependency paths. Build the plugin and statically linked dependencies from a neutral layout, for example `W:/source`, `W:/deps/CommonLibSSE` and `W:/build-release`, with the same pinned dependencies. The workspace can be exposed through a temporary Windows drive mapping. Reusing a library built from private paths can retain those paths in the final DLL. Verify source hashes before building, then inspect ASCII/UTF-16 strings and the PE debug record for personal directories, credentials and internal paths. Do not distribute private PDBs.
 

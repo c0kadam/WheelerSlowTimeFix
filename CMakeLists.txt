@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 project(
 	WheelerSlowTimeFix
-	VERSION 1.2.0
+	VERSION 1.3.0
 	LANGUAGES CXX
 )
 
@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PLUGIN_AUTHOR "c0kadam")
-set(PLUGIN_VERSION_LABEL "1.2.0")
+set(PLUGIN_VERSION_LABEL "1.3.0")
 set(PLUGIN_VERSION_TWEAK 0)
 set(PLUGIN_PRODUCT_NAME "Wheeler Slow Time Fix")
 set(PLUGIN_FILE_DESCRIPTION "Wheeler / Skyrim Souls / For Honor slow-time compatibility fix")
