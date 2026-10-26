@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PLUGIN_AUTHOR "c0kadam")
-set(PLUGIN_VERSION_LABEL "1.2.0-rc.1")
+set(PLUGIN_VERSION_LABEL "1.2.0")
 set(PLUGIN_VERSION_TWEAK 0)
 set(PLUGIN_PRODUCT_NAME "Wheeler Slow Time Fix")
 set(PLUGIN_FILE_DESCRIPTION "Wheeler / Skyrim Souls / For Honor slow-time compatibility fix")
@@ -21,12 +21,6 @@ set(PLUGIN_COPYRIGHT "Copyright (c) ${PLUGIN_AUTHOR}")
 if("${PROJECT_SOURCE_DIR}" STREQUAL "${PROJECT_BINARY_DIR}")
 	message(FATAL_ERROR "in-source builds are not allowed")
 endif()
-
-macro(set_from_environment VARIABLE)
-	if(NOT DEFINED ${VARIABLE} AND DEFINED ENV{${VARIABLE}})
-		set(${VARIABLE} $ENV{${VARIABLE}})
-	endif()
-endmacro()
 
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
 	"${PROJECT_SOURCE_DIR}/src/*.cpp"
@@ -106,18 +100,3 @@ target_precompile_headers(
 	PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/PCH.h"
 )
-
-set_from_environment(CompiledPluginsPath)
-if(DEFINED CompiledPluginsPath)
-	add_custom_command(
-		TARGET ${PROJECT_NAME}
-		POST_BUILD
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-			"$<TARGET_FILE:${PROJECT_NAME}>"
-			"${CompiledPluginsPath}/SKSE/Plugins/"
-		COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-			"$<TARGET_PDB_FILE:${PROJECT_NAME}>"
-			"${CompiledPluginsPath}/SKSE/Plugins/"
-		VERBATIM
-	)
-endif()

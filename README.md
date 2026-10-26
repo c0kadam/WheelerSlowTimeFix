@@ -1,12 +1,12 @@
-# Wheeler Slow Time Fix
+# Wheeler Slow Time Fix 1.2.0
 
-An SKSE plugin that addresses Slow Time conflicts between Wheeler and Skyrim Souls RE, including compatibility with selected SlowTimeEffect spells.
+An SKSE plugin that addresses Slow Time conflicts between Wheeler and Skyrim Souls RE, with compatibility for selected For Honor Slow Time effects.
 
-**Compatibility:** Plugin loading confirmed on Skyrim SE 1.5.97 and AE 1.6.1170. Full gameplay validation is pending. Skyrim 1.7.x is not supported yet.
+**Supported runtimes:** Skyrim SE 1.5.97 and Skyrim AE 1.6.1170 and 1.7.104.
 
-**Requirements:** SKSE, Address Library, Wheeler, and Skyrim Souls RE.
+**Requirements:** SKSE and Address Library for your Skyrim runtime, plus compatible Wheeler and Skyrim Souls RE builds.
 
-**Download:** [v1.1.0-rc.1](https://github.com/c0kadam/WheelerSlowTimeFix/releases/tag/v1.1.0-rc.1) (pre-release). Install the release ZIP using your mod manager.
+GitHub distributes source code only through release source archives. Compiled releases are distributed separately on Nexus Mods.
 
 **Known issue:** Slow Time may occasionally remain active after rapid menu transitions.
 
