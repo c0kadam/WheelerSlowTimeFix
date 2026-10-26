@@ -38,6 +38,7 @@ namespace
 	PVOID g_exceptionHandler = nullptr;
 	HMODULE g_selfModule = nullptr;
 	HMODULE g_wheelerModule = nullptr;
+	HMODULE g_glassworkFavoritesModule = nullptr;
 	HMODULE g_skyrimSoulsModule = nullptr;
 	std::atomic_bool g_wheelerOwnsTimeScale{ false };
 	std::atomic<float> g_preWheelerTimeScale{ 1.0f };
@@ -88,6 +89,7 @@ namespace
 	{
 		g_selfModule = ::GetModuleHandleA("WheelerSlowTimeFix.dll");
 		g_wheelerModule = ::GetModuleHandleA("wheeler.dll");
+		g_glassworkFavoritesModule = ::GetModuleHandleA("GlassworkFavorites.dll");
 		g_skyrimSoulsModule = ::GetModuleHandleA("SkyrimSoulsRE.dll");
 	}
 
@@ -155,13 +157,18 @@ namespace
 		}
 	}
 
+	bool IsWheelerLikeModule(HMODULE a_module)
+	{
+		return a_module && (a_module == g_wheelerModule || a_module == g_glassworkFavoritesModule);
+	}
+
 	bool ShouldSyncTargetWriteForWriter(const WriterInfo& a_writer)
 	{
 		if (!a_writer.module) {
 			return false;
 		}
 
-		return a_writer.module == g_wheelerModule || a_writer.module == g_skyrimSoulsModule;
+		return IsWheelerLikeModule(a_writer.module) || a_writer.module == g_skyrimSoulsModule;
 	}
 
 	void SyncCurrentToTarget(const char* a_reason, const WriterInfo& a_writer)
@@ -216,7 +223,7 @@ namespace
 
 	bool HandleWheelerOwnershipOnTargetWrite(const WriterInfo& a_writer)
 	{
-		if (!a_writer.module || a_writer.module != g_wheelerModule) {
+		if (!IsWheelerLikeModule(a_writer.module)) {
 			return false;
 		}
 
@@ -506,6 +513,7 @@ namespace
 		};
 
 		SKSE::log::info("[SlowTimeFix] module wheeler={}", pathOrMissing(g_wheelerModule));
+		SKSE::log::info("[SlowTimeFix] module GlassworkFavorites={}", pathOrMissing(g_glassworkFavoritesModule));
 		SKSE::log::info("[SlowTimeFix] module SkyrimSoulsRE={}", pathOrMissing(g_skyrimSoulsModule));
 	}
 
