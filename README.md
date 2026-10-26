@@ -2,6 +2,10 @@
 
 An SKSE plugin that addresses Slow Time conflicts between Wheeler and Skyrim Souls RE, with compatibility for selected For Honor Slow Time effects.
 
+<p align="center">
+  <a href="https://www.nexusmods.com/skyrimspecialedition/mods/174828"><img alt="Nexus Mods" src="https://img.shields.io/badge/Nexus%20Mods-Download-DA8E35?logo=nexusmods&logoColor=white"></a>
+</p>
+
 **Supported runtimes:** Skyrim SE 1.5.97 and Skyrim AE 1.6.1170 and 1.7.104.
 
 **Requirements:** SKSE and Address Library for your Skyrim runtime, plus compatible wheel and Skyrim Souls RE builds.
