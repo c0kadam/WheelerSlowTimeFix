@@ -22,6 +22,12 @@ namespace
 		std::atomic_uint32_t logBudget{ 64 };
 	};
 
+	struct AdditionalModule
+	{
+		std::string name;
+		std::atomic<HMODULE> module{ nullptr };
+	};
+
 #if WSTF_VERBOSE_LOGGING
 	struct EventState
 	{
@@ -38,8 +44,10 @@ namespace
 	PVOID g_exceptionHandler = nullptr;
 	HMODULE g_selfModule = nullptr;
 	HMODULE g_wheelerModule = nullptr;
-	HMODULE g_glassworkFavoritesModule = nullptr;
 	HMODULE g_skyrimSoulsModule = nullptr;
+	std::array<AdditionalModule, 64> g_additionalModules{};
+	std::atomic_size_t g_additionalModuleCount{ 0 };
+	std::once_flag g_configurationLoaded;
 	std::atomic_bool g_wheelerOwnsTimeScale{ false };
 	std::atomic<float> g_preWheelerTimeScale{ 1.0f };
 
@@ -89,7 +97,6 @@ namespace
 	{
 		g_selfModule = ::GetModuleHandleA("WheelerSlowTimeFix.dll");
 		g_wheelerModule = ::GetModuleHandleA("wheeler.dll");
-		g_glassworkFavoritesModule = ::GetModuleHandleA("GlassworkFavorites.dll");
 		g_skyrimSoulsModule = ::GetModuleHandleA("SkyrimSoulsRE.dll");
 	}
 
@@ -106,6 +113,100 @@ namespace
 		}
 
 		return std::string(buffer.data(), length);
+	}
+
+	bool DLLNamesEqual(std::string_view a_lhs, std::string_view a_rhs)
+	{
+		std::array<wchar_t, 256> lhs{}, rhs{};
+		const int lhsLength = ::MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, a_lhs.data(), static_cast<int>(a_lhs.size()), lhs.data(), static_cast<int>(lhs.size()));
+		const int rhsLength = ::MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, a_rhs.data(), static_cast<int>(a_rhs.size()), rhs.data(), static_cast<int>(rhs.size()));
+		return lhsLength > 0 && rhsLength > 0 && ::CompareStringOrdinal(lhs.data(), lhsLength, rhs.data(), rhsLength, TRUE) == CSTR_EQUAL;
+	}
+
+	bool IsValidDLLName(const std::string& a_name)
+	{
+		if (a_name.size() <= 4 || a_name.size() > 255 || !DLLNamesEqual(std::string_view(a_name).substr(a_name.size() - 4), ".dll")) {
+			return false;
+		}
+		for (const unsigned char ch : a_name) {
+			if (ch < 32 || ch == 127 || std::string_view("\\/:*?\"<>|").find(ch) != std::string_view::npos) {
+				return false;
+			}
+		}
+		return DLLNamesEqual(a_name, a_name);
+	}
+
+	void ParseAdditionalDLLs(std::string_view a_value)
+	{
+		std::size_t count = 0;
+		while (!a_value.empty()) {
+			const auto comma = a_value.find(',');
+			auto entry = a_value.substr(0, comma);
+			a_value = comma == std::string_view::npos ? std::string_view{} : a_value.substr(comma + 1);
+			const auto first = entry.find_first_not_of(" \t\r\n");
+			if (first == std::string_view::npos) {
+				continue;
+			}
+			entry = entry.substr(first, entry.find_last_not_of(" \t\r\n") - first + 1);
+			const std::string name(entry);
+			if (!IsValidDLLName(name)) {
+				SKSE::log::warn("[SlowTimeFix] ignoring invalid AdditionalDLLs entry (DLL base name required)");
+				continue;
+			}
+			bool duplicate = DLLNamesEqual(name, "wheeler.dll") ||
+			                 DLLNamesEqual(name, "SkyrimSoulsRE.dll") ||
+			                 DLLNamesEqual(name, "WheelerSlowTimeFix.dll");
+			for (std::size_t i = 0; i < count && !duplicate; ++i) {
+				duplicate = DLLNamesEqual(name, g_additionalModules[i].name);
+			}
+			if (duplicate) {
+				continue;
+			}
+			if (count == g_additionalModules.size()) {
+				SKSE::log::warn("[SlowTimeFix] AdditionalDLLs limit is {}; ignoring {}", count, name);
+				continue;
+			}
+			g_additionalModules[count++].name = name;
+		}
+		g_additionalModuleCount.store(count, std::memory_order_release);
+		SKSE::log::info("[SlowTimeFix] configured {} additional Wheeler-compatible module(s)", count);
+	}
+
+	void LoadAdditionalModuleConfiguration()
+	{
+		const auto executable = ModulePathFromHandle(::GetModuleHandleA(nullptr));
+		if (executable.empty()) {
+			SKSE::log::warn("[SlowTimeFix] game path unavailable; using built-in compatibility modules only");
+			return;
+		}
+		const auto path = (std::filesystem::path(executable).parent_path() / "Data/SKSE/Plugins/WheelerSlowTimeFix.ini").string();
+		if (::GetFileAttributesA(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+			SKSE::log::info("[SlowTimeFix] optional INI unavailable; using built-in compatibility modules only");
+			return;
+		}
+		std::array<char, 8192> value{};
+		const DWORD length = ::GetPrivateProfileStringA("Compatibility", "AdditionalDLLs", "", value.data(), static_cast<DWORD>(value.size()), path.c_str());
+		if (length >= value.size() - 1) {
+			SKSE::log::warn("[SlowTimeFix] AdditionalDLLs value is too long; using built-in compatibility modules only");
+			return;
+		}
+		ParseAdditionalDLLs(std::string_view(value.data(), length));
+	}
+
+	void RefreshAdditionalModuleHandles()
+	{
+		const auto count = g_additionalModuleCount.load(std::memory_order_acquire);
+		for (std::size_t i = 0; i < count; ++i) {
+			auto& configured = g_additionalModules[i];
+			HMODULE module = configured.module.load(std::memory_order_relaxed);
+			if (!module) {
+				// Pin an already-loaded module so its cached handle cannot be recycled.
+				if (::GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_PIN, configured.name.c_str(), &module)) {
+					configured.module.store(module, std::memory_order_relaxed);
+				}
+			}
+			SKSE::log::info("[SlowTimeFix] configured module {}: {} ({})", configured.name, module ? "recognized" : "unavailable", module ? ModulePathFromHandle(module) : "not loaded");
+		}
 	}
 
 	WriterInfo ResolveWriter(void* a_address)
@@ -159,7 +260,19 @@ namespace
 
 	bool IsWheelerLikeModule(HMODULE a_module)
 	{
-		return a_module && (a_module == g_wheelerModule || a_module == g_glassworkFavoritesModule);
+		if (!a_module) {
+			return false;
+		}
+		if (a_module == g_wheelerModule) {
+			return true;
+		}
+		const auto count = g_additionalModuleCount.load(std::memory_order_acquire);
+		for (std::size_t i = 0; i < count; ++i) {
+			if (a_module == g_additionalModules[i].module.load(std::memory_order_relaxed)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	bool ShouldSyncTargetWriteForWriter(const WriterInfo& a_writer)
@@ -513,7 +626,6 @@ namespace
 		};
 
 		SKSE::log::info("[SlowTimeFix] module wheeler={}", pathOrMissing(g_wheelerModule));
-		SKSE::log::info("[SlowTimeFix] module GlassworkFavorites={}", pathOrMissing(g_glassworkFavoritesModule));
 		SKSE::log::info("[SlowTimeFix] module SkyrimSoulsRE={}", pathOrMissing(g_skyrimSoulsModule));
 	}
 
@@ -570,6 +682,16 @@ namespace TimeTargetWatch
 
 	void QueueInstall()
 	{
+		std::call_once(g_configurationLoaded, []() {
+			try {
+				LoadAdditionalModuleConfiguration();
+			} catch (const std::exception& error) {
+				g_additionalModuleCount.store(0, std::memory_order_release);
+				SKSE::log::warn("[SlowTimeFix] optional INI could not be read: {}; using built-in compatibility modules only", error.what());
+			}
+		});
+		RefreshAdditionalModuleHandles();
+
 		if (g_watchState.installLoopStarted.exchange(true)) {
 			return;
 		}
