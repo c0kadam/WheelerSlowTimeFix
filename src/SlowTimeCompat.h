@@ -4,6 +4,7 @@
 
 namespace SlowTimeCompat
 {
+	bool HasActiveSlowTimeEffect();
 	void InstallHooks();
 	void RefreshTrackedForms();
 	bool TryDeferWheelerRestore(float a_currentBefore, float a_targetAfter, float a_restoreBaseline, float& a_replacementTarget);

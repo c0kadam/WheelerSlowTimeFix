@@ -32,6 +32,8 @@ $configure=@('--preset','vs2022-windows','-S',$source,'-B',$build,'-A','x64',"-D
 if($ResourceCompiler){$configure+='-DCMAKE_RC_COMPILER:FILEPATH='+$ResourceCompiler.Replace('\','/')}
 & cmake @configure
 if($LASTEXITCODE){throw 'Configuration failed'}
+if(-not (Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -Pattern '^WSTF_BOUNDED_DIAGNOSTICS:BOOL=ON$')){throw 'Release build must include INI-controlled bounded diagnostics'}
+if(-not (Select-String -LiteralPath (Join-Path $build 'WheelerSlowTimeFix.vcxproj') -Pattern 'WSTF_BOUNDED_DIAGNOSTICS=1')){throw 'Bounded diagnostics compile definition is missing'}
 if(Select-String -LiteralPath (Join-Path $build 'CMakeCache.txt') -Pattern '^CompiledPluginsPath:'){throw 'Deployment variable must be absent, not empty'}
 if(Select-String -LiteralPath (Join-Path $build 'WheelerSlowTimeFix.vcxproj') -Pattern 'PostBuildEvent|copy_if_different|SKSE[/\\]Plugins'){throw 'Deployment command detected'}
 & cmake --build $build --config Release --target WheelerSlowTimeFix --parallel 1 -- /v:minimal /p:UseMultiToolTask=true /p:MultiProcMaxCount=1

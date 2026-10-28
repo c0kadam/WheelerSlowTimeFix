@@ -1,4 +1,8 @@
 #include "Plugin.h"
+#if WSTF_BOUNDED_DIAGNOSTICS
+#include "OwnershipDiagnostics.h"
+#endif
+
 #include "SlowTimeCompat.h"
 #include "TimeTargetWatch.h"
 
@@ -53,6 +57,12 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			SlowTimeCompat::RefreshTrackedForms();
 			TimeTargetWatch::QueueInstall();
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (OwnershipDiagnostics::IsEnabled()) {
+				spdlog::default_logger()->flush();
+			}
+#endif
+
 			break;
 		default:
 			break;
@@ -97,6 +107,10 @@ extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	}
 	// Keep InitializeLog's sink; CommonLib's default logger truncates the same file.
 	SKSE::Init(a_skse, SKSE::InitInfo{ .log = false });
+#if WSTF_BOUNDED_DIAGNOSTICS
+	OwnershipDiagnostics::Initialize();
+#endif
+
 
 	SlowTimeCompat::InstallHooks();
 	TimeTargetWatch::SetMainThreadID(::GetCurrentThreadId());
@@ -115,5 +129,11 @@ extern "C" DLLEXPORT bool __cdecl SKSEPlugin_Load(const SKSE::LoadInterface* a_s
 	}
 
 	SKSE::log::info("[SlowTimeFix] queued early watchpoint install; DataLoaded will retry if needed");
+#if WSTF_BOUNDED_DIAGNOSTICS
+	if (OwnershipDiagnostics::IsEnabled()) {
+		spdlog::default_logger()->flush();
+	}
+#endif
+
 	return true;
 }

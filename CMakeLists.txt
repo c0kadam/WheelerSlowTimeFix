@@ -7,6 +7,12 @@ project(
 )
 
 option(WSTF_VERBOSE_LOGGING "Enable original detailed runtime logging" OFF)
+# Bounded ownership diagnostics
+option(WSTF_BOUNDED_DIAGNOSTICS "Buffer ownership transitions outside the exception handler" ON)
+if(WSTF_BOUNDED_DIAGNOSTICS AND WSTF_VERBOSE_LOGGING)
+    message(FATAL_ERROR "Bounded diagnostics require WSTF_VERBOSE_LOGGING=OFF")
+endif()
+
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -100,3 +106,6 @@ target_precompile_headers(
 	PRIVATE
 		"${PROJECT_SOURCE_DIR}/src/PCH.h"
 )
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    WSTF_BOUNDED_DIAGNOSTICS=$<BOOL:${WSTF_BOUNDED_DIAGNOSTICS}>)

@@ -1,6 +1,12 @@
 #include "SlowTimeCompat.h"
+#if WSTF_BOUNDED_DIAGNOSTICS
+#include "OwnershipDiagnostics.h"
+#endif
+
 #include "TimeTargetWatch.h"
 #include "ThreadDiscovery.h"
+
+#include <limits>
 
 namespace
 {
@@ -50,6 +56,10 @@ namespace
 	std::once_flag g_configurationLoaded;
 	std::atomic_bool g_wheelerOwnsTimeScale{ false };
 	std::atomic<float> g_preWheelerTimeScale{ 1.0f };
+	// Last observed target, including our corrections; current may still be interpolating.
+	std::atomic<float> g_previousTarget{ std::numeric_limits<float>::quiet_NaN() };
+	std::atomic_bool g_skyrimSoulsSlowActive{ false };
+	std::atomic_bool g_wheelerRestorePending{ false };
 
 #if WSTF_VERBOSE_LOGGING
 	std::mutex g_seenWritersLock;
@@ -334,14 +344,129 @@ namespace
 #endif
 	}
 
-	bool HandleWheelerOwnershipOnTargetWrite(const WriterInfo& a_writer)
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+	void RecordWatch(OwnershipDiagnostics::Kind kind, OwnershipDiagnostics::Reason reason,
+		const WriterInfo& writer, float previous, float current, float requested) noexcept
 	{
+		if (!OwnershipDiagnostics::IsEnabled()) { return; }
+		using namespace OwnershipDiagnostics;
+		const auto* now = g_currentMultiplier.get();
+		const auto* target = g_targetMultiplier.get();
+		Event event{ .module = reinterpret_cast<std::uintptr_t>(writer.module),
+			.previous = previous, .current = current, .requested = requested,
+			.currentAfter = now ? *now : kUnknown, .targetAfter = target ? *target : kUnknown,
+			.baseline = g_preWheelerTimeScale.load(),
+			.flags = static_cast<std::uint16_t>((g_wheelerOwnsTimeScale.load() ? 1 : 0) |
+				(g_wheelerRestorePending.load() ? 2 : 0) | (g_skyrimSoulsSlowActive.load() ? 4 : 0) |
+				(SlowTimeCompat::HasActiveSlowTimeEffect() ? 8 : 0)),
+			.flagsValid = 15, .kind = kind, .reason = reason };
+		Record(event);
+	}
+
+#endif
+	void ObserveTargetWrite(const WriterInfo& a_writer, float a_previousTarget)
+	{
+		const auto* target = g_targetMultiplier.get();
+		if (!target || !std::isfinite(*target)) {
+			return;
+		}
+		if (a_writer.module && a_writer.module == g_skyrimSoulsModule) {
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+			const bool diagSoulsWasActive = OwnershipDiagnostics::IsEnabled() && g_skyrimSoulsSlowActive.load();
+#endif
+			// Souls multiplies on menu entry and divides on exit, writing both
+			// multipliers before returning. Do not guess or hardcode its factor.
+			if (std::isfinite(a_previousTarget) && *target < a_previousTarget) {
+				g_skyrimSoulsSlowActive.store(true);
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (OwnershipDiagnostics::IsEnabled()) {
+					if (!diagSoulsWasActive) {
+						RecordWatch(OwnershipDiagnostics::Kind::SoulsActivated, OwnershipDiagnostics::Reason::ActiveMenu,
+							a_writer, a_previousTarget, g_currentMultiplier.get() ? *g_currentMultiplier.get() : OwnershipDiagnostics::kUnknown, *target);
+					}
+				}
+#endif
+
+			} else if (std::isfinite(a_previousTarget) && *target > a_previousTarget) {
+				g_skyrimSoulsSlowActive.store(false);
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (OwnershipDiagnostics::IsEnabled()) {
+					RecordWatch(diagSoulsWasActive ? OwnershipDiagnostics::Kind::SoulsRestored : OwnershipDiagnostics::Kind::Unexpected,
+						diagSoulsWasActive ? OwnershipDiagnostics::Reason::MenuExit : OwnershipDiagnostics::Reason::UnobservedMenuEntry,
+						a_writer, a_previousTarget, g_currentMultiplier.get() ? *g_currentMultiplier.get() : OwnershipDiagnostics::kUnknown, *target);
+				}
+#endif
+
+			}
+		} else if (!a_writer.isSelf && !IsWheelerLikeModule(a_writer.module) &&
+		           !SlowTimeCompat::HasActiveSlowTimeEffect()) {
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+			const bool diagReleased = OwnershipDiagnostics::IsEnabled() && (g_wheelerOwnsTimeScale.load() || g_wheelerRestorePending.load());
+#endif
+			// An unrelated writer supersedes the wheel baseline. Fail closed;
+			// a later wheel close must not cancel that writer's slowdown.
+			g_wheelerRestorePending.store(false);
+			g_wheelerOwnsTimeScale.store(false);
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (diagReleased) {
+				RecordWatch(OwnershipDiagnostics::Kind::OwnerReleased, OwnershipDiagnostics::Reason::UnrelatedWriter,
+					a_writer, a_previousTarget, g_currentMultiplier.get() ? *g_currentMultiplier.get() : OwnershipDiagnostics::kUnknown, *target);
+			}
+#endif
+
+		}
+	}
+
+	bool HandleWheelerOwnershipOnTargetWrite(const WriterInfo& a_writer, float a_previousTarget)
+	{
+		if (a_writer.module && a_writer.module == g_skyrimSoulsModule &&
+			g_wheelerRestorePending.load() && !g_skyrimSoulsSlowActive.load()) {
+			auto* current = g_currentMultiplier.get();
+			auto* target = g_targetMultiplier.get();
+			const float baseline = g_preWheelerTimeScale.load();
+#if WSTF_BOUNDED_DIAGNOSTICS
+			const float diagMenuCurrent = OwnershipDiagnostics::IsEnabled() && current ? *current : OwnershipDiagnostics::kUnknown;
+			const float diagMenuRequested = OwnershipDiagnostics::IsEnabled() && target ? *target : OwnershipDiagnostics::kUnknown;
+#endif
+
+			if (current && target && std::isfinite(*current) && std::isfinite(*target) && std::isfinite(baseline)) {
+				float replacement = baseline;
+				SlowTimeCompat::TryDeferWheelerRestore(*current, baseline, baseline, replacement);
+				*target = replacement;
+				ClearTargetInterpolation();
+				g_wheelerRestorePending.store(false);
+				g_wheelerOwnsTimeScale.store(false);
+			}
+			// Continue through the existing Souls current/target synchronization.
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (OwnershipDiagnostics::IsEnabled()) {
+				if (!g_wheelerRestorePending.load()) {
+					RecordWatch(OwnershipDiagnostics::Kind::OwnerReleased, OwnershipDiagnostics::Reason::MenuExit,
+					a_writer, a_previousTarget, diagMenuCurrent, diagMenuRequested);
+				}
+			}
+#endif
+
+			return false;
+		}
 		if (!IsWheelerLikeModule(a_writer.module)) {
 			return false;
 		}
 
 		auto* current = g_currentMultiplier.get();
 		auto* target = g_targetMultiplier.get();
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+		if (OwnershipDiagnostics::IsEnabled()) {
+			if (!current || !target) {
+				RecordWatch(OwnershipDiagnostics::Kind::Unexpected, OwnershipDiagnostics::Reason::MissingPointers,
+					a_writer, a_previousTarget, OwnershipDiagnostics::kUnknown, OwnershipDiagnostics::kUnknown);
+			}
+		}
+#endif
 		if (!current || !target) {
 			return false;
 		}
@@ -349,6 +474,13 @@ namespace
 		const float currentBefore = *current;
 		const float targetAfter = *target;
 		if (!std::isfinite(currentBefore) || !std::isfinite(targetAfter)) {
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (OwnershipDiagnostics::IsEnabled()) {
+				RecordWatch(OwnershipDiagnostics::Kind::Unexpected, OwnershipDiagnostics::Reason::NonFinite,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+#endif
+
 			return false;
 		}
 
@@ -357,10 +489,39 @@ namespace
 		const bool targetIsSlow = targetAfter < 0.99f;
 		const bool ownsTimeScale = g_wheelerOwnsTimeScale.load();
 
-		// Wheeler is taking ownership from a normal baseline; allow its slow-time apply.
-		if (!ownsTimeScale && currentIsNormal && targetIsSlow) {
-			g_preWheelerTimeScale.store(currentBefore);
+		// A witnessed normal target -> wheel slowdown also proves acquisition when
+		// current lags behind target. Never infer this baseline from a low current.
+		const bool previousTargetIsNormal = a_previousTarget >= 0.99f && a_previousTarget <= 1.01f;
+		const bool witnessedNormalTarget = previousTargetIsNormal && !SlowTimeCompat::HasActiveSlowTimeEffect();
+#if WSTF_BOUNDED_DIAGNOSTICS
+		if (OwnershipDiagnostics::IsEnabled()) {
+			if (!std::isfinite(a_previousTarget)) {
+				RecordWatch(OwnershipDiagnostics::Kind::MissingHistory, OwnershipDiagnostics::Reason::UnknownPreviousTarget,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+			if (!ownsTimeScale && targetIsSlow && !currentIsNormal && !witnessedNormalTarget) {
+				RecordWatch(OwnershipDiagnostics::Kind::OwnerNotAcquired,
+					SlowTimeCompat::HasActiveSlowTimeEffect() ? OwnershipDiagnostics::Reason::NativeEffect : OwnershipDiagnostics::Reason::ExternalBaseline,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+			if (g_wheelerRestorePending.load() && !ownsTimeScale) {
+				RecordWatch(OwnershipDiagnostics::Kind::Unexpected, OwnershipDiagnostics::Reason::PendingWithoutOwner,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+		}
+#endif
+
+		if (!ownsTimeScale && targetIsSlow && (currentIsNormal || witnessedNormalTarget)) {
+			g_preWheelerTimeScale.store(currentIsNormal ? currentBefore : a_previousTarget);
 			g_wheelerOwnsTimeScale.store(true);
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (OwnershipDiagnostics::IsEnabled()) {
+				RecordWatch(OwnershipDiagnostics::Kind::OwnerAcquired,
+					currentIsNormal ? OwnershipDiagnostics::Reason::NormalCurrent : OwnershipDiagnostics::Reason::ObservedNormalTarget,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+#endif
+
 
 #if WSTF_VERBOSE_LOGGING
 			const std::string key = std::format("owner-acquired:{:.2f}:{:.2f}", currentBefore, targetAfter);
@@ -379,6 +540,13 @@ namespace
 			*target = currentBefore;
 			ClearTargetInterpolation();
 
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+			if (OwnershipDiagnostics::IsEnabled()) {
+				RecordWatch(OwnershipDiagnostics::Kind::RestoreBlocked, OwnershipDiagnostics::Reason::NoOwnerExternal,
+					a_writer, a_previousTarget, currentBefore, targetAfter);
+			}
+#endif
 #if WSTF_VERBOSE_LOGGING
 			const std::string key = std::format("blocked-restore:{:.2f}:{:.2f}", currentBefore, targetAfter);
 			if (ShouldLogEvent(key, std::chrono::seconds(2)) && ConsumeLogBudget()) {
@@ -392,6 +560,21 @@ namespace
 		}
 
 		if (ownsTimeScale) {
+			if (targetIsNormal && g_skyrimSoulsSlowActive.load()) {
+				// Leave the menu multiplier intact; finish the wheel restore on
+				// the observed Souls exit write, not while its slowdown is active.
+				*target = currentBefore;
+				ClearTargetInterpolation();
+				g_wheelerRestorePending.store(true);
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (OwnershipDiagnostics::IsEnabled()) {
+					RecordWatch(OwnershipDiagnostics::Kind::RestoreDeferredMenu, OwnershipDiagnostics::Reason::ActiveMenu,
+						a_writer, a_previousTarget, currentBefore, targetAfter);
+				}
+#endif
+
+				return true;
+			}
 			const float cachedBaseline = g_preWheelerTimeScale.load();
 			if (targetIsNormal) {
 				float replacementTarget = targetAfter;
@@ -399,6 +582,13 @@ namespace
 					*target = replacementTarget;
 					ClearTargetInterpolation();
 					g_wheelerOwnsTimeScale.store(false);
+#if WSTF_BOUNDED_DIAGNOSTICS
+					if (OwnershipDiagnostics::IsEnabled()) {
+						RecordWatch(OwnershipDiagnostics::Kind::OwnerReleased, OwnershipDiagnostics::Reason::NativeEffect,
+							a_writer, a_previousTarget, currentBefore, targetAfter);
+					}
+#endif
+
 
 #if WSTF_VERBOSE_LOGGING
 					const std::string key = std::format("deferred-restore:{:.2f}:{:.2f}", currentBefore, cachedBaseline);
@@ -416,6 +606,14 @@ namespace
 
 			if (NearlyEqual(targetAfter, cachedBaseline) || (cachedBaseline >= 0.99f && targetIsNormal)) {
 				g_wheelerOwnsTimeScale.store(false);
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (OwnershipDiagnostics::IsEnabled()) {
+					RecordWatch(OwnershipDiagnostics::Kind::OwnerReleased,
+						NearlyEqual(targetAfter, cachedBaseline) ? OwnershipDiagnostics::Reason::BaselineMatched : OwnershipDiagnostics::Reason::NormalRequest,
+						a_writer, a_previousTarget, currentBefore, targetAfter);
+				}
+#endif
+
 
 #if WSTF_VERBOSE_LOGGING
 				const std::string key = std::format("owner-released:{:.2f}:{:.2f}", cachedBaseline, targetAfter);
@@ -599,22 +797,54 @@ namespace
 
 		a_info->ContextRecord->Dr6 = 0;
 
+		const auto* targetBeforeHandling = g_targetMultiplier.get();
+		const float previousTarget = targetBeforeHandling ?
+			g_previousTarget.exchange(*targetBeforeHandling) : std::numeric_limits<float>::quiet_NaN();
+
 		CacheModuleHandles();
 		const WriterInfo writer = ResolveWriter(a_info->ExceptionRecord->ExceptionAddress);
 		if (!writer.isSelf) {
+
+#if WSTF_BOUNDED_DIAGNOSTICS
+			const bool diagCapture = OwnershipDiagnostics::IsEnabled();
+			const bool diagOwnedAtEntry = diagCapture && g_wheelerOwnsTimeScale.load();
+			const bool diagCompletionEligible = diagOwnedAtEntry && (IsWheelerLikeModule(writer.module) ||
+				(writer.module && writer.module == g_skyrimSoulsModule && g_wheelerRestorePending.load()));
+			const float diagCurrentAtEntry = diagCompletionEligible && g_currentMultiplier.get() ? *g_currentMultiplier.get() : OwnershipDiagnostics::kUnknown;
+			const float diagRequestedAtEntry = diagCompletionEligible && g_targetMultiplier.get() ? *g_targetMultiplier.get() : OwnershipDiagnostics::kUnknown;
+#endif
+			ObserveTargetWrite(writer, previousTarget);
 #if WSTF_VERBOSE_LOGGING
 			MaybeLogWriterDiscovery(writer);
 #endif
-			if (!HandleWheelerOwnershipOnTargetWrite(writer)) {
+			if (!HandleWheelerOwnershipOnTargetWrite(writer, previousTarget)) {
 				if (auto* target = g_targetMultiplier.get()) {
 					SlowTimeCompat::MaybeOverrideTrackedFinishRestore(*target);
 				}
 				if (ShouldSyncTargetWriteForWriter(writer)) {
 					SyncCurrentToTarget("target-write", writer);
 				}
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (diagCapture) {
+					if (!diagOwnedAtEntry && g_wheelerOwnsTimeScale.load() && IsWheelerLikeModule(writer.module) &&
+						g_currentMultiplier.get() && g_targetMultiplier.get() && NearlyEqual(*g_currentMultiplier.get(), *g_targetMultiplier.get())) {
+						RecordWatch(OwnershipDiagnostics::Kind::WheelApplyCompleted, OwnershipDiagnostics::Reason::SyncCompleted,
+							writer, previousTarget, *g_currentMultiplier.get(), *g_targetMultiplier.get());
+					}
+					if (diagCompletionEligible && !g_wheelerOwnsTimeScale.load() && !SlowTimeCompat::HasActiveSlowTimeEffect() &&
+						g_currentMultiplier.get() && g_targetMultiplier.get() && NearlyEqual(*g_currentMultiplier.get(), *g_targetMultiplier.get())) {
+						RecordWatch(OwnershipDiagnostics::Kind::RestoreCompleted, OwnershipDiagnostics::Reason::SyncCompleted,
+							writer, previousTarget, diagCurrentAtEntry, diagRequestedAtEntry);
+					}
+				}
+#endif
+
 			}
 		}
 
+		if (const auto* target = g_targetMultiplier.get()) {
+			g_previousTarget.store(*target);
+		}
 		return EXCEPTION_CONTINUE_EXECUTION;
 	}
 
@@ -666,6 +896,12 @@ namespace
 					"[SlowTimeFix] installed process-wide target watchpoints on {} thread(s) for {:p}",
 					totalInstalled,
 					static_cast<const void*>(g_targetMultiplier.get()));
+#if WSTF_BOUNDED_DIAGNOSTICS
+				if (OwnershipDiagnostics::IsEnabled()) {
+					spdlog::default_logger()->flush();
+				}
+#endif
+
 			}
 
 			std::this_thread::sleep_for(std::chrono::milliseconds(500));
