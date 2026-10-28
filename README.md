@@ -22,7 +22,7 @@ Enabled=false
 
 Use comma-separated DLL basenames. Names are case-insensitive, surrounding whitespace is trimmed, and duplicates are ignored. Paths and wildcards are invalid. Up to 64 additional names are supported. Restart the game after changing the INI. A missing INI or empty list keeps only built-in compatibility; `favwheel.dll` is not recognized automatically.
 
-Listed DLLs are handled by the existing Wheeler correction logic and must use compatible time-scale behavior. Adding an arbitrary plugin to the list does not load it or guarantee compatibility.
+Listed DLLs are handled by the existing Wheeler correction logic and must use compatible time-scale behavior. Alternative Wheeler implementations have partial support. Adding an arbitrary plugin to the list does not load it or guarantee compatibility. See [Compatibility and integration](COMPATIBILITY.md) for limitations and guidance for wheel authors.
 
 **Diagnostics**
 
