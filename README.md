@@ -14,14 +14,23 @@ Wheeler and Skyrim Souls RE are recognized by default. To add other Wheeler-comp
 
 ```ini
 [Compatibility]
-AdditionalDLLs=GlassworkFavorites.dll,p-radials.dll
+AdditionalDLLs=GlassworkFavorites.dll
+
+[Diagnostics]
+Enabled=false
 ```
 
 Use comma-separated DLL basenames. Names are case-insensitive, surrounding whitespace is trimmed, and duplicates are ignored. Paths and wildcards are invalid. Up to 64 additional names are supported. Restart the game after changing the INI. A missing INI or empty list keeps only built-in compatibility; `favwheel.dll` is not recognized automatically.
 
 Listed DLLs are handled by the existing Wheeler correction logic and must use compatible time-scale behavior. Adding an arbitrary plugin to the list does not load it or guarantee compatibility.
 
+**Diagnostics**
+
+Set `Enabled=true` under `[Diagnostics]` to record bounded ownership and restoration diagnostics in `WheelerSlowTimeFix.log`. Diagnostics are off by default, including when the file or setting is missing, invalid or unreadable. The setting is read once at startup, so restart Skyrim after changing it. Normal startup, warning and error messages remain available with diagnostics off.
+
 **Slow Time compatibility**
+
+Wheel ownership can be recognized from a previously observed normal target even when the current multiplier is slightly below normal speed, including the 0.980 case.
 
 The general restore safeguard prevents a wheel from cancelling an external slowdown when it requests normal speed without owning the slowdown. This can protect the vanilla Slow Time shout and slowdowns from other mods, without tracking their FormIDs, but compatibility with every implementation is not guaranteed.
 
@@ -31,7 +40,9 @@ For Honor handling is separate: selected spells are recognized by plugin filenam
 
 Normal sequential use of multiple Wheeler variants in the same session generally works. Overlapping wheels or rapid switching can cause conflicting slow-time restoration operations, so use one wheel at a time.
 
-**Known issue:** Slow Time may occasionally remain active after rapid menu transitions.
+**p-radials limitation**
+
+p-radials may skip its own restoration when Skyrim Souls changes the multiplier while the wheel is active. This has been observed on Skyrim 1.6.1170 and 1.7.104 and can leave Slow Time active. WheelerSlowTimeFix does not correct this case.
 
 GitHub distributes source code only through release source archives. Compiled releases are distributed separately on Nexus Mods.
 

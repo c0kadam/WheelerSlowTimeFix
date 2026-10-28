@@ -24,9 +24,9 @@ Get-FileHash -LiteralPath $Dll -Algorithm SHA256
 
 Alternatively use environment variables `CommonLibSSEPath_NG`, `VCPKG_ROOT`, `SPDLOG_DIR`, `RAPIDCSV_INCLUDE_DIRS` and optional `CMAKE_PREFIX_PATH`. If SDK resource compiler discovery requires an override, pass `-ResourceCompiler` with your installed `rc.exe` location. No private machine-specific default paths are required or stored in the source.
 
-Choose an absent external build directory. The wrapper configures x64 Release with verbose logging disabled, inspects the fresh cache and generated plugin project, and builds only the DLL target. Build outputs remain in the external build directory; neither the DLL nor the PDB is automatically deployed. No install target or game launch is used.
+Choose an absent external build directory. The wrapper configures x64 Release with verbose logging disabled, inspects the fresh cache and generated plugin project, and builds only the DLL target. Standard builds include INI-controlled bounded diagnostics by default; runtime diagnostics remain OFF unless `[Diagnostics] Enabled=true` is set in the INI before startup. No additional compiler flag or source patch is required. Build outputs remain in the external build directory; neither the DLL nor the PDB is automatically deployed. No install target or game launch is used.
 
-For a local v1.3.0 test mod, copy the verified DLL to `SKSE/Plugins/WheelerSlowTimeFix.dll` and place the example `WheelerSlowTimeFix.ini` from the [README](README.md) beside it. The INI can enable Glasswork Favorites and p-radials without changing the built-in Wheeler and Skyrim Souls handling. Keep PDBs and build outputs outside the test mod.
+For a local v1.3.0 test mod, copy the verified DLL to `SKSE/Plugins/WheelerSlowTimeFix.dll` and place the example `WheelerSlowTimeFix.ini` from the [README](README.md) beside it. The INI can enable Glasswork Favorites without changing the built-in Wheeler and Skyrim Souls handling. See the README for the diagnostic toggle and the known p-radials restoration limitation. Keep PDBs and build outputs outside the test mod.
 
 ## Release artifact privacy
 
